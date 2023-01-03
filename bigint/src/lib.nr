@@ -2,6 +2,7 @@ use dep::std;
 mod constants;
 mod arithmetic;
 mod division;
+mod mul_mod_non_deterministic;
 
 // This defines a BigInt, a smart wrapper around a sequence of u32 limbs, least-significant limb first
 struct BigInt {
@@ -301,6 +302,7 @@ impl BigInt {
 fn run_tests() {
     arithmetic::run_tests();
     division::run_tests();
+    mul_mod_non_deterministic::run_tests();
     test_from_bytes_be();
     test_is_one_zero();
     test_add();
