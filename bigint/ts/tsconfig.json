@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ESNext", // Target environment. Most modern browsers support ES6, but you may want to set it to newer or older. (defaults to ES3)
+    "types": [
+      // ... other types
+      "node"
+    ],
+  },
+}
