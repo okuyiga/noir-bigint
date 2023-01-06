@@ -9,40 +9,44 @@ global NUM_BASE_EXPONENTIATIONS : Field = 17; // ((constants::NUM_LIMBS - 1) * 2
 global NUM_TOTAL_BASE_EXPONENTIATIONS : Field = 51; // NUM_BASE_EXPONENTIATIONS * NUM_REDUCTION_MODULI
 
 struct NonDetermMulModder {
-    base : Field,
+    base : comptime Field,
     q : BigInt, // modulus
     m : [Field; NUM_REDUCTION_MODULI],
     q_mod_m : [Field; NUM_REDUCTION_MODULI],
     base_exponentiations : [Field; NUM_TOTAL_BASE_EXPONENTIATIONS], // base^i mod q mod m_i
 }
 
+struct MulModArgs {
+    x : BigInt,
+    y : BigInt,
+    z_mod_q : BigInt,
+    r : Field,
+    s : [Field; NUM_REDUCTION_MODULI],
+}
+
 impl NonDetermMulModder {
     // n^2 * b^2 ~ 9^2 * 2^64 (for 9-limbs of 32-bits each)
-    fn rMax(self) -> u96 {
-        (constants::NUM_LIMBS as u96 * constants::NUM_LIMBS as u96) * (self.base as u96 * self.base as u96)
+    fn rMax(self) -> comptime u80 {
+        (constants::NUM_LIMBS as u80 * constants::NUM_LIMBS as u80) * (self.base as u80 * self.base as u80)
     }
 
     // 2 * num_limbs^2 * b^2 ~ 2^1 * 9^2 * 2^64 (for 9-limbs of 32-bits each)
-    fn sMax(self) -> u96 {
-        2 * (constants::NUM_LIMBS as u96 * constants::NUM_LIMBS as u96) * (self.base as u96 * self.base as u96)
+    fn sMax(self) -> comptime u80 {
+        2 * (constants::NUM_LIMBS as u80 * constants::NUM_LIMBS as u80) * (self.base as u80 * self.base as u80)
     }
 
     fn range_checks(self, r : Field, s : [Field; NUM_REDUCTION_MODULI]) {
         let rMax = self.rMax();
-        constrain r as u96 < rMax;
+        constrain r as u80 < rMax;
         let sMax = self.sMax();
         for i in 0..NUM_REDUCTION_MODULI {
-            constrain s[i] as u96 < sMax;
+            constrain s[i] as u80 < sMax;
         }
     }
 
     fn mul_mod(
         self,
-        x : BigInt,
-        y : BigInt,
-        z_mod_q : BigInt,
-        r : Field,
-        s : [Field; NUM_REDUCTION_MODULI],
+        args: MulModArgs,
     ) {
         // small-moduli checks
         for i in 0..NUM_REDUCTION_MODULI {
@@ -50,13 +54,13 @@ impl NonDetermMulModder {
             for j in 0..NUM_BASE_EXPONENTIATIONS {
                 base_exponentiations[j] = self.base_exponentiations[(i * NUM_BASE_EXPONENTIATIONS) + j];
             };
-            let product = partially_reduced_product_mod_q(base_exponentiations, x, y);
-            let sum = partially_reduced_sum_mod_q(base_exponentiations, z_mod_q);
-            constrain product - sum - (r * self.q_mod_m[i]) == s[i] * self.m[i];
+            let product = partially_reduced_product_mod_q(base_exponentiations, args.x, args.y);
+            let sum = partially_reduced_sum_mod_q(base_exponentiations, args.z_mod_q);
+            constrain product - sum - (args.r * self.q_mod_m[i]) == args.s[i] * self.m[i];
         };
         
         // parameter range checks
-        self.range_checks(r, s);
+        self.range_checks(args.r, args.s);
     }
     
     fn ed25519() -> Self {
@@ -115,9 +119,16 @@ fn test_mul_mod_case1() {
     let z_mod_q = BigInt::new([4104057479, 1317660176, 3369491359, 1574675528, 718719913, 3448263837, 3220071330, 1040409407, 0]);
     let r = 913981063;
     let s = [7034590962026984280, 8353757445643061182, 1692690955609806861];
+    let args = MulModArgs {
+        x,
+        y,
+        z_mod_q,
+        r,
+        s,
+    };
 
     let ed25519_mul_modder = NonDetermMulModder::ed25519();
-    ed25519_mul_modder.mul_mod(x, y, z_mod_q, r, s);
+    ed25519_mul_modder.mul_mod(args);
 }
 
 fn test_mul_mod_case2() {
@@ -126,9 +137,16 @@ fn test_mul_mod_case2() {
     let z_mod_q = BigInt::new([3083750218, 1317426195, 3369491359, 2359654542, 718713589, 3448263837, 4005050344, 2402907717, 0]);
     let r = 456996855;
     let s = [7034594334339792293, 8353768497476829405, 1692717790503378879];
+    let args = MulModArgs {
+        x,
+        y,
+        z_mod_q,
+        r,
+        s,
+    };
 
     let p256_mul_modder = NonDetermMulModder::p256();
-    p256_mul_modder.mul_mod(x, y, z_mod_q, r, s);
+    p256_mul_modder.mul_mod(args);
 }
 
 fn test_mul_mod() {
