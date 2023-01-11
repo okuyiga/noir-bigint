@@ -1,7 +1,9 @@
 use dep::std;
 mod constants;
 mod arithmetic;
-mod division;
+mod multiplication;
+// mod division;
+// mod ecdsa;
 mod mul_mod_non_deterministic;
 
 // This defines a BigInt, a smart wrapper around a sequence of u32 limbs, least-significant limb first
@@ -139,24 +141,26 @@ impl BigInt {
     }
 
     fn mul(self : Self, other : BigInt) -> BigInt2 {
-        // Double limbs won't overflow because the product of two N-limb arrays is never larger than 2N-limbs
-        // ((b^n) - 1) * ((b^n) - 1) = b^(2n) - 2(b^n) - 1 < b^(2n)
-        let mut limbs  = [0 as u32; constants::DOUBLE_LIMBS];
-
-        for i in 0..constants::NUM_LIMBS {
-            let mut carry : u32 = 0;
-            for j in 0..constants::NUM_LIMBS {
-                let k = i + j;
-                let (limb_product, new_carry) = arithmetic::mul_limbs_with_carry(limbs[k], self.limbs[i], other.limbs[j], carry);
-                limbs[k] = limb_product;
-                carry = new_carry;
-            };
-            limbs[i + constants::NUM_LIMBS] = carry;
-        };
-
+        let prod_limbs = multiplication::mul(self.limbs, other.limbs);
         BigInt2 {
-            limbs: limbs,
+            limbs: prod_limbs,
         }
+    }
+
+    // Verifies a * b = c (mod p) 
+    // Using witnessed c, q to constrain
+    //  1. a * b == p * q + c
+    //  2. c < p
+    fn verify_mul_mod(self, other: BigInt, product_mod_p: BigInt, p: BigInt, q: BigInt) {
+        let (lhs, rhs) = multiplication::verify_mul_mod_helper(
+            self.limbs,
+            other.limbs,
+            product_mod_p.limbs,
+            p.limbs,
+            q.limbs,
+        );
+        constrain lhs == rhs;
+        constrain product_mod_p.lt(p);
     }
 
     // Returns self + other % modulus.
@@ -268,9 +272,7 @@ impl BigInt {
     fn is_zero(self : Self) -> bool {
         let mut result : bool = self.limbs[0] == 0;
         for i in 1..constants::NUM_LIMBS {
-            if result == true {
-                result = self.limbs[i] == 0;
-            }
+            result = result & (self.limbs[i] == 0);
         };
         result
     }
@@ -308,6 +310,23 @@ impl BigInt {
     // Returns true iff this number < other.
     fn lt(self : Self, other : Self) -> bool {
         other.gt(self)
+    }
+
+    // Returns true iff this number == other.
+    fn eq(self : Self, other : Self) -> bool {
+        let mut is_eq = true;
+        for i in 0..constants::NUM_LIMBS {
+            is_eq = is_eq & (self.limbs[i] == other.limbs[i]);
+        }
+        is_eq
+    }
+
+    // Constrains equality for all limbs of self and other, no return value
+    // Slightly more efficient than eq
+    fn constrain_eq(self : Self, other : Self) {
+        for i in 0..constants::NUM_LIMBS {
+            constrain self.limbs[i] == other.limbs[i];
+        }
     }
 }
 
@@ -613,26 +632,35 @@ fn test_msl() {
 
 // cmp
 fn test_cmp() {
-    let one = BigInt::one();
-    let zero = BigInt::zero();
+    let x1 = BigInt::new([0 as u32, 0, 0, 0, 1, 0, 0, 0, 0]);
+    let y1 = BigInt::new([0 as u32, 0, 0, 0, 0, 0, 0, 0, 1]);
+    constrain x1.lt(y1) == true;
+    constrain x1.lte(y1) == true;
+    constrain x1.gt(y1) == false;
+    constrain x1.gte(y1) == false;
+    constrain x1.eq(y1) == false;
 
-    constrain zero.gt(zero) == false;
-    constrain zero.gt(one) == false;
-    constrain one.gt(zero) == true;
-    constrain one.gt(one) == false;
+    let x2 = BigInt::new([0 as u32, 0, 0, 0, 0, 0, 0, 0, 1]);
+    let y2 = BigInt::new([0 as u32, 0, 0, 0, 1, 0, 0, 0, 1]);
+    constrain x2.lt(y2) == true;
+    constrain x2.lte(y2) == true;
+    constrain x2.gt(y2) == false;
+    constrain x2.gte(y2) == false;
+    constrain x2.eq(y2) == false;
 
-    constrain zero.gte(zero) == true;
-    constrain zero.gte(one) == false;
-    constrain one.gte(zero) == true;
-    constrain one.gte(one) == true;
+    let x3 = BigInt::new([0 as u32, 0, 0, 0, 1, 0, 0, 0, 2]);
+    let y3 = BigInt::new([0 as u32, 0, 0, 0, 2, 0, 0, 0, 1]);
+    constrain x3.lt(y3) == false;
+    constrain x3.lte(y3) == false;
+    constrain x3.gt(y3) == true;
+    constrain x3.gte(y3) == true;
+    constrain x3.eq(y3) == false;
 
-    constrain zero.lt(zero) == false;
-    constrain zero.lt(one) == true;
-    constrain one.lt(zero) == false;
-    constrain one.lt(one) == false;
-
-    constrain zero.lte(zero) == true;
-    constrain zero.lte(one) == true;
-    constrain one.lte(zero) == false;
-    constrain one.lte(one) == true;
+    let x4 = BigInt::new([0 as u32, 0, 0, 0, 2, 0, 0, 0, 2]);
+    let y4 = BigInt::new([0 as u32, 0, 0, 0, 2, 0, 0, 0, 2]);
+    constrain x4.lt(y4) == false;
+    constrain x4.lte(y4) == true;
+    constrain x4.gt(y4) == false;
+    constrain x4.gte(y4) == true;
+    constrain x4.eq(y4) == true;
 }

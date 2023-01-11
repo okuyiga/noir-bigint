@@ -1,8 +1,8 @@
+declare var require: any;
+
 const { P256 } = require('@noble/curves/p256');
 const { bn254 } = require('@noble/curves/bn');
 const { ed25519 } = require('@noble/curves/ed25519');
-console.log(P256);
-console.log(ed25519);
 
 (BigInt.prototype as any).toJSON = function() { return this.toString() }
 
@@ -208,10 +208,49 @@ const mulModNonDeterministicHelper = (
     }
 }
 
+interface Point {
+    x: bigint,
+    y: bigint,
+}
+
+const pointAdditionHelper = (p: Point, q: Point, fieldUtils: any) => {
+    /* Rule #4 Point addition */
+    /* R = P + Q */
+    /* Lambda = (Q.Y - P.Y) / (Q.X - P.X) */
+    
+    const { mod, invert } = fieldUtils;
+
+    const { x: x1, y: y1 } = p;
+    const { x: x2, y: y2 } = q;
+
+    let dy = mod(y2 - y1);
+    let dx = mod(x2 - x1);
+    const div = (lhs, rhs) => mod(lhs * invert(rhs));
+    let lambda = div(dy, dx);
+    let lambdaSquared = mod(lambda * lambda);
+    let xr = mod(lambdaSquared - x1 - x2);
+    let lambda_times_x1_minus_xr = mod(lambda * mod(x1 - xr));
+    let yr = mod(lambda_times_x1_minus_xr - y1);
+    console.log(xr);
+    console.log(yr);
+    return {
+        lambdaArgs: {
+            x: lambda,
+            y: dx,
+            zModQ: dy,
+        },
+        lambdaSquaredArgs: {
+            x: lambda,
+            y: lambda,
+            zModQ: lambdaSquared,
+        }
+    }
+
+}
 
 const run = () => {
     const baseFieldOrder = bn254.CURVE.Fp.ORDER;
-    const useNativeFieldAsModulo = false;
+    const useNativeFieldAsModulo = true;
     const base = 4294967296n;
     const numLimbs = 9;
     const x = 8457179954364567802776200328751639987550736n;
@@ -245,3 +284,17 @@ const run = () => {
     console.log(genParamsStruct(numLimbs, base, qBase32, m, qModM, baseExponentiations));
 }
 run();
+
+pointAdditionHelper(
+    {
+      x: 48439561293906451759052585252797914202762949526041747995844080717082404635286n,
+      y: 36134250956749795798585127919587881956611106672985015071877198253568414405109n,
+    },
+    {
+      x: 56515219790691171413109057904011688695424810155802929973526481321309856242040n,
+      y: 3377031843712258259223711451491452598088675519751548567112458094635497583569n
+    },
+    P256.utils,
+)
+
+export {}
